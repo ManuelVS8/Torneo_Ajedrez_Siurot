@@ -158,6 +158,18 @@
         .points-col { text-align: right; font-weight: bold; color: var(--accent); font-size: 1.1rem; }
         .rank-col { width: 30px; text-align: center; color: var(--light-text); font-weight: bold; }
 
+        .tiebreak-info {
+            background-color: var(--accent-light);
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-size: 0.8rem;
+            color: var(--text);
+            border-left: 3px solid var(--accent);
+        }
+        .tiebreak-info strong { display: block; margin-bottom: 4px; color: var(--primary); }
+        .tiebreak-info ul { margin: 0; padding-left: 20px; }
+
         .modal {
             display: none; position: fixed; z-index: 200; left: 0; top: 0; width: 100%; height: 100%;
             background-color: rgba(0,0,0,0.5); justify-content: center; align-items: center;
@@ -287,14 +299,24 @@
     <!-- TAB 3: CLASIFICACIÓN -->
     <div id="tab-ranking" class="tab-content">
         <div class="card">
-            <h3>Clasificación (Sistema Buchholz)</h3>
+            <h3>Clasificación</h3>
+            
+            <div class="tiebreak-info">
+                <strong>Criterios de desempate (por orden):</strong>
+                <ul>
+                    <li>1. Enfrentamiento Directo</li>
+                    <li>2. Mayor número de victorias</li>
+                    <li>3. Sistema Sonneborn-Berger</li>
+                </ul>
+            </div>
+
             <table id="rankingTable">
                 <thead>
                     <tr>
                         <th class="rank-col">#</th>
                         <th>Jugador</th>
                         <th class="points-col">Pts</th>
-                        <th class="sb-col">SB-B</th>
+                        <th class="sb-col">S-B</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -505,7 +527,7 @@
 
     // --- AUDIO FUNCTION ---
     function playTap() {
-        const audio = document.getElementById('tapSound');
+        const audio = document.getElementById("tapSound");
         if(audio) {
             audio.currentTime = 0;
             audio.play().catch(e => console.log("Audio play blocked"));
@@ -676,60 +698,94 @@
         // No llamar a syncToGoogle aquí.
     }
 
-    function calculateBuchholzLocally() {
-        // Replica local de la lógica Buchholz para renderizado rápido
-        let standings = appData.players.map(p => ({ ...p, points: 0, wins: 0, draws: 0, sb: 0 }));
+    // --- NUEVA LÓGICA DE RANKING (DESEMPATES) ---
+    function calculateRanking() {
+        // 1. Inicializar estructura
+        let standings = appData.players.map(p => ({ 
+            ...p, 
+            points: 0, 
+            wins: 0, 
+            draws: 0, 
+            sb: 0 
+        }));
         
-        appData.players.forEach(p => {
-            let sb = 0;
-            let wins = 0;
-            let draws = 0;
-            
-            appData.matches.forEach(m => {
-                if (m.result) {
-                    const opponent = appData.players.find(opp => opp.id === (m.player1Id === p.id ? m.player2Id : m.player1Id));
-                    const opponentScore = 1; 
-                      
-                  if (m.result === '1-0' || m.result === '0-1') {
-                    if ((m.result === '1-0' && m.player1Id === p.id) || (m.result === '0-1' && m.player2Id === p.id)) {
-                      sb += opponentScore;
-                      wins++;
-                    }
-                  } else if (m.result === '1/2-1/2') {
-                      sb += 0.5;
-                      draws++;
-                  }
-                }
-            });
-            
-            p.sb = sb;
-            p.wins = wins;
-            p.draws = draws;
-        });
-
+        // 2. Calcular Puntos y Victorias (Básico)
         appData.matches.forEach(m => {
-            if (m.result) {
-                if (m.result === '1-0') {
-                    const p = standings.find(pl => pl.id === m.player1Id);
-                    if (p) p.points += 1;
-                } else if (m.result === '0-1') {
-                    const p = standings.find(pl => pl.id === m.player2Id);
-                    if (p) p.points += 1;
-                } else if (m.result === '1/2-1/2') {
-                    const p1 = standings.find(pl => pl.id === m.player1Id);
-                    const p2 = standings.find(pl => pl.id === m.player2Id);
-                    if (p1) p1.points += 0.5;
-                    if (p2) p2.points += 0.5;
-                }
+            if (!m.result) return;
+            const p1 = standings.find(pl => pl.id === m.player1Id);
+            const p2 = standings.find(pl => pl.id === m.player2Id);
+
+            if (m.result === '1-0') {
+                if(p1) { p1.points += 1; p1.wins += 1; }
+            } else if (m.result === '0-1') {
+                if(p2) { p2.points += 1; p2.wins += 1; }
+            } else if (m.result === '1/2-1/2') {
+                if(p1) { p1.points += 0.5; p1.draws += 1; }
+                if(p2) { p2.points += 0.5; p2.draws += 1; }
             }
         });
 
-        return standings.sort((a, b) => {
+        // 3. Calcular Sonneborn-Berger (SB)
+        // SB = Suma(PuntosRivalDerrotado) + 0.5 * Suma(PuntosRivalEmpatado)
+        appData.matches.forEach(m => {
+            if (!m.result) return;
+            const p1 = standings.find(pl => pl.id === m.player1Id);
+            const p2 = standings.find(pl => pl.id === m.player2Id);
+            
+            // Usamos los puntos ya calculados en el paso 2
+            const p2_total_points = p2.points;
+            const p1_total_points = p1.points;
+
+            if (m.result === '1-0') {
+                p1.sb += p2_total_points;
+            } else if (m.result === '0-1') {
+                p2.sb += p1_total_points;
+            } else if (m.result === '1/2-1/2') {
+                p1.sb += (p2_total_points / 2);
+                p2.sb += (p1_total_points / 2);
+            }
+        });
+
+        // 4. Ordenar según criterios
+        standings.sort((a, b) => {
+            // 1. Puntos totales
             if (b.points !== a.points) return b.points - a.points;
-            if (b.sb !== a.sb) return b.sb - a.sb;
+
+            // 2. Enfrentamiento Directo (Solo si están empatados a puntos)
+            // Buscamos si A y B jugaron entre sí
+            const match = appData.matches.find(m => 
+                (m.player1Id === a.id && m.player2Id === b.id) || 
+                (m.player1Id === b.id && m.player2Id === a.id)
+            );
+
+            if (match && match.result) {
+                // Definimos puntuación en el enfrentamiento directo
+                let a_score = 0;
+                let b_score = 0;
+
+                if (match.result === '1-0') {
+                    if (match.player1Id === a.id) a_score = 1; else b_score = 1;
+                } else if (match.result === '0-1') {
+                    if (match.player2Id === a.id) a_score = 1; else b_score = 1;
+                } else if (match.result === '1/2-1/2') {
+                    a_score = 0.5; b_score = 0.5;
+                }
+
+                // Si hubo un ganador claro en el directo, decidimos aquí
+                if (a_score !== b_score) return b_score - a_score;
+            }
+
+            // 3. Mayor número de victorias
             if (b.wins !== a.wins) return b.wins - a.wins;
+
+            // 4. Sistema Sonneborn-Berger
+            if (b.sb !== a.sb) return b.sb - a.sb;
+
+            // 5. Orden alfabético
             return a.name.localeCompare(b.name);
         });
+
+        return standings;
     }
 
     // --- RENDERING ---
@@ -844,7 +900,7 @@
     function renderRanking() {
         const tbody = document.querySelector('#rankingTable tbody');
         tbody.innerHTML = "";
-        const standings = calculateBuchholzLocally();
+        const standings = calculateRanking();
         standings.forEach((p, index) => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -904,10 +960,10 @@
 
         doc.setFontSize(14);
         doc.setTextColor(0);
-        doc.text("Clasificación Actual (Buchholz)", margin, y);
+        doc.text("Clasificación Actual", margin, y);
         y += 10;
 
-        const standings = calculateBuchholzLocally();
+        const standings = calculateRanking();
         const col1 = margin;
         const col2 = margin + 40;
         const col3 = pageWidth - margin - 10;
@@ -918,7 +974,7 @@
         doc.text("#", col1, y);
         doc.text("Jugador", col2, y);
         doc.text("Puntos", col3, y, { align: "right" });
-        doc.text("SB-B", col4, y, { align: "right" });
+        doc.text("S-B", col4, y, { align: "right" });
         y += 7;
 
         doc.setFont("helvetica", "normal");
