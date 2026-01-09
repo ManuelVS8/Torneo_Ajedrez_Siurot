@@ -137,15 +137,21 @@
 <div id="toast"></div>
 
 <script>
-    // Versión actual del script para forzar actualización de caché
-    const APP_VERSION = "1.2"; 
+    // CAMBIA ESTA VERSIÓN SI HACES CAMBIOS EN EL FUTURO PARA LIMPIAR EL MÓVIL
+    const VERSION_APP = "1.0.4";
     const ADMIN_PASS = "bejherro";
-    // El parámetro ?v= asegura que Google Script no use una versión vieja en caché
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyeRMzVOAm3h6qE7bqoVy2P7_g1NmkGxhImqqW0Z3mAIkgF5Fr0V_AODKf2o4ciPOZO/exec?v=" + APP_VERSION;
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyeRMzVOAm3h6qE7bqoVy2P7_g1NmkGxhImqqW0Z3mAIkgF5Fr0V_AODKf2o4ciPOZO/exec";
     
     let isAdmin = false, appData = { players: [], matches: [], started: false }, currentRound = 1, pendingAction = null;
 
     document.addEventListener('DOMContentLoaded', () => {
+        // Truco para detectar si la versión cambió y forzar limpieza
+        const lastVersion = localStorage.getItem('app_v');
+        if(lastVersion !== VERSION_APP) {
+            localStorage.setItem('app_v', VERSION_APP);
+            if(lastVersion) location.reload(true); 
+        }
+
         fetchFromGoogle();
         document.getElementById('pwdInput').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') checkPassword();
@@ -155,7 +161,8 @@
     async function fetchFromGoogle() {
         showLoading("Sincronizando con la nube...");
         try {
-            const res = await fetch(`${SCRIPT_URL}&action=read&t=${Date.now()}`);
+            // Añadimos un parámetro aleatorio para evitar caché de red
+            const res = await fetch(`${SCRIPT_URL}?action=read&t=${Date.now()}&v=${VERSION_APP}`);
             const data = await res.json();
             if (data.db) appData = data.db;
             renderUI();
@@ -169,17 +176,20 @@
         try {
             const res = await fetch(SCRIPT_URL, {
                 method: 'POST',
-                mode: 'no-cors', // En algunos casos ayuda con la caché de POST
                 body: JSON.stringify({
                     action: 'sync',
                     matches: appData.matches,
-                    players: appData.players
+                    players: appData.players,
+                    v: VERSION_APP
                 })
             });
-            // Debido a no-cors o redirecciones, re-sincronizamos lectura para confirmar
-            setTimeout(fetchFromGoogle, 1000);
-            showToast("✅ Petición de guardado enviada");
-        } catch (e) { showToast("❌ Error al guardar."); }
+            const data = await res.json();
+            if (data.status === 'success') { 
+                appData = data.db; 
+                showToast("✅ Resultados guardados con éxito"); 
+                renderUI(); 
+            }
+        } catch (e) { showToast("❌ Error al guardar. Inténtalo de nuevo."); }
         finally { hideLoading(); }
     }
 
@@ -190,7 +200,8 @@
                 method: 'POST',
                 body: JSON.stringify({
                     action: action,
-                    ...params
+                    ...params,
+                    v: VERSION_APP
                 })
             });
             const data = await res.json();
