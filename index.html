@@ -137,30 +137,63 @@
 <div id="toast"></div>
 
 <script>
-    // VERSIÓN DEL CÓDIGO
-    const APP_VERSION = "1.0.6"; 
+    /* SISTEMA NUCLEAR ANTI-CACHÉ
+       Detecta cambios en el código y fuerza una recarga ignorando el Service Worker y la caché.
+    */
+    (function() {
+        // 1. Calculamos una huella única del código HTML actual
+        function calculateHash() {
+            const content = document.documentElement.innerHTML.replace(/<script.*?>.*?<\/script>/gs, "");
+            let h = 0;
+            for (let i = 0; i < content.length; i++) {
+                h = ((h << 5) - h) + content.charCodeAt(i);
+                h |= 0;
+            }
+            return h.toString();
+        }
+
+        const currentHash = calculateHash();
+        const storedHash = localStorage.getItem('siurot_v_hash');
+
+        // 2. Si hay un cambio, limpiamos TODO y forzamos recarga con URL única
+        if (storedHash && storedHash !== currentHash) {
+            console.warn("Nueva versión detectada. Limpiando cachés...");
+            
+            // Borramos localStorage
+            localStorage.clear();
+            localStorage.setItem('siurot_v_hash', currentHash);
+
+            // Borramos cachés del navegador (Service Worker API)
+            if ('caches' in window) {
+                caches.keys().then(names => {
+                    for (let name of names) caches.delete(name);
+                });
+            }
+
+            // Forzamos al navegador a ir al servidor mediante un parámetro aleatorio en la URL
+            const cleanUrl = window.location.origin + window.location.pathname + "?update=" + Date.now();
+            window.location.replace(cleanUrl);
+        } else {
+            localStorage.setItem('siurot_v_hash', currentHash);
+        }
+
+        // 3. Forzamos que todas las peticiones fetch ignoren la caché
+        const originalFetch = window.fetch;
+        window.fetch = function(...args) {
+            let url = args[0];
+            if (typeof url === 'string' && !url.includes('nocache=')) {
+                const sep = url.includes('?') ? '&' : '?';
+                url += sep + 'nocache=' + Date.now();
+                args[0] = url;
+            }
+            return originalFetch.apply(this, args);
+        };
+    })();
+
     const ADMIN_PASS = "bejherro";
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyeRMzVOAm3h6qE7bqoVy2P7_g1NmkGxhImqqW0Z3mAIkgF5Fr0V_AODKf2o4ciPOZO/exec";
     
     let isAdmin = false, appData = { players: [], matches: [], started: false }, currentRound = 1, pendingAction = null;
-
-    // --- LÓGICA DE VERSIÓN CORREGIDA ---
-    (function() {
-        const savedVersion = localStorage.getItem('siurot_v');
-        if (savedVersion !== APP_VERSION) {
-            console.log("Nueva versión detectada. Actualizando...");
-            // 1. Limpiamos caché
-            localStorage.clear();
-            // 2. Guardamos la nueva versión ANTES de recargar
-            localStorage.setItem('siurot_v', APP_VERSION);
-            
-            // 3. Solo recargamos si ya había una versión guardada antes (para evitar recarga al primer acceso)
-            if (savedVersion) {
-                // Forzamos una URL nueva con parámetro de tiempo para evitar caché de servidor/navegador
-                window.location.replace(window.location.pathname + "?update=" + Date.now());
-            }
-        }
-    })();
 
     document.addEventListener('DOMContentLoaded', () => {
         fetchFromGoogle();
@@ -172,8 +205,7 @@
     async function fetchFromGoogle() {
         showLoading("Sincronizando con la nube...");
         try {
-            // Añadimos timestamp para evitar caché de red
-            const res = await fetch(`${SCRIPT_URL}?action=read&t=${Date.now()}`);
+            const res = await fetch(`${SCRIPT_URL}?action=read`);
             const data = await res.json();
             if (data.db) appData = data.db;
             renderUI();
