@@ -144,7 +144,7 @@
     
     let isAdmin = false, appData = { players: [], matches: [], started: false }, currentRound = 1, pendingAction = null;
 
-    // --- LÓGICA DE VERSIÓN CORREGIDA (SIN BUCLE INFINITO) ---
+    // --- LÓGICA DE VERSIÓN CORREGIDA ---
     (function() {
         const savedVersion = localStorage.getItem('siurot_v');
         if (savedVersion !== APP_VERSION) {
@@ -156,7 +156,8 @@
             
             // 3. Solo recargamos si ya había una versión guardada antes (para evitar recarga al primer acceso)
             if (savedVersion) {
-                window.location.reload(true);
+                // Forzamos una URL nueva con parámetro de tiempo para evitar caché de servidor/navegador
+                window.location.replace(window.location.pathname + "?update=" + Date.now());
             }
         }
     })();
