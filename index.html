@@ -137,21 +137,27 @@
 <div id="toast"></div>
 
 <script>
-    // CAMBIA ESTA VERSIÓN SI HACES CAMBIOS EN EL FUTURO PARA LIMPIAR EL MÓVIL
-    const VERSION_APP = "1.0.4";
+    // VERSIÓN DEL CÓDIGO (Cambiar para forzar actualización)
+    const APP_VERSION = "1.0.5"; 
     const ADMIN_PASS = "bejherro";
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyeRMzVOAm3h6qE7bqoVy2P7_g1NmkGxhImqqW0Z3mAIkgF5Fr0V_AODKf2o4ciPOZO/exec";
     
     let isAdmin = false, appData = { players: [], matches: [], started: false }, currentRound = 1, pendingAction = null;
 
-    document.addEventListener('DOMContentLoaded', () => {
-        // Truco para detectar si la versión cambió y forzar limpieza
-        const lastVersion = localStorage.getItem('app_v');
-        if(lastVersion !== VERSION_APP) {
-            localStorage.setItem('app_v', VERSION_APP);
-            if(lastVersion) location.reload(true); 
+    // Lógica de detección de versión y limpieza de caché
+    (function() {
+        const savedVersion = localStorage.getItem('siurot_v');
+        if (savedVersion !== APP_VERSION) {
+            localStorage.clear(); // Limpia datos locales antiguos
+            localStorage.setItem('siurot_v', APP_VERSION);
+            // Si no es la primera vez que entra, fuerza recarga de red
+            if (savedVersion) {
+                window.location.reload(true);
+            }
         }
+    })();
 
+    document.addEventListener('DOMContentLoaded', () => {
         fetchFromGoogle();
         document.getElementById('pwdInput').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') checkPassword();
@@ -161,8 +167,8 @@
     async function fetchFromGoogle() {
         showLoading("Sincronizando con la nube...");
         try {
-            // Añadimos un parámetro aleatorio para evitar caché de red
-            const res = await fetch(`${SCRIPT_URL}?action=read&t=${Date.now()}&v=${VERSION_APP}`);
+            // Parámetros t (tiempo) y v (versión) para evitar que la red devuelva caché
+            const res = await fetch(`${SCRIPT_URL}?action=read&t=${Date.now()}&v=${APP_VERSION}`);
             const data = await res.json();
             if (data.db) appData = data.db;
             renderUI();
@@ -180,7 +186,7 @@
                     action: 'sync',
                     matches: appData.matches,
                     players: appData.players,
-                    v: VERSION_APP
+                    v: APP_VERSION
                 })
             });
             const data = await res.json();
@@ -201,7 +207,7 @@
                 body: JSON.stringify({
                     action: action,
                     ...params,
-                    v: VERSION_APP
+                    v: APP_VERSION
                 })
             });
             const data = await res.json();
