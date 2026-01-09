@@ -107,7 +107,12 @@
         </div>
     </div>
     <div id="tab-export" class="tab-content">
-        <div class="card"><h3>Panel de Exportación</h3><p>Descarga la clasificación actual en formato PDF.</p><button class="export" onclick="downloadPDF()">⬇️ Descargar Clasificación</button></div>
+        <div class="card">
+            <h3>Panel de Exportación</h3>
+            <p>Descarga los documentos oficiales del torneo.</p>
+            <button class="export" onclick="downloadPDF()">⬇️ Descargar Clasificación</button>
+            <button class="export" style="background-color: var(--primary); margin-top: 15px;" onclick="downloadMatchesPDF()">📅 Descargar Emparejamientos</button>
+        </div>
     </div>
 </div>
 <div class="bottom-nav">
@@ -117,7 +122,14 @@
     <div class="nav-item" onclick="switchTab('tab-export', this)"><span class="nav-icon">📄</span>PDF</div>
 </div>
 <div id="confirmModal" class="modal"><div class="modal-content"><h3 id="confirmTitle"></h3><p id="confirmMessage"></p><div class="modal-buttons"><button onclick="closeConfirmModal(false)">Cancelar</button><button id="confirmActionBtn" onclick="closeConfirmModal(true)">Confirmar</button></div></div></div>
-<div id="pwdModal" class="modal"><div class="modal-content"><h3>Acceso Administrador</h3><input type="password" id="pwdInput" placeholder="Contraseña"><button onclick="checkPassword()">Entrar</button><button onclick="closePasswordModal()">Cancelar</button></div></div>
+<div id="pwdModal" class="modal">
+    <div class="modal-content">
+        <h3>Acceso Administrador</h3>
+        <input type="password" id="pwdInput" placeholder="Contraseña">
+        <button onclick="checkPassword()">Entrar</button>
+        <button onclick="closePasswordModal()">Cancelar</button>
+    </div>
+</div>
 <div id="toast"></div>
 
 <script>
@@ -125,7 +137,13 @@
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyeRMzVOAm3h6qE7bqoVy2P7_g1NmkGxhImqqW0Z3mAIkgF5Fr0V_AODKf2o4ciPOZO/exec";
     let isAdmin = false, appData = { players: [], matches: [], started: false }, currentRound = 1, pendingAction = null;
 
-    document.addEventListener('DOMContentLoaded', fetchFromGoogle);
+    document.addEventListener('DOMContentLoaded', () => {
+        fetchFromGoogle();
+        // Listener para la tecla Enter en el input de contraseña
+        document.getElementById('pwdInput').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') checkPassword();
+        });
+    });
 
     async function fetchFromGoogle() {
         showLoading("Sincronizando con la nube...");
@@ -283,7 +301,6 @@
     function confirmResetTournament() { if(!isAdmin) return; openConfirmModal("¡ATENCIÓN!", "¿Seguro que quieres borrar todo el torneo? Esta acción no se puede deshacer.", "reset"); }
     function openConfirmModal(t, m, a) { document.getElementById('confirmTitle').innerText=t; document.getElementById('confirmMessage').innerText=m; pendingAction=a; document.getElementById('confirmModal').style.display="flex"; }
     
-    // Barajado profesional Fisher-Yates
     function shuffleArray(array) {
         for (let i = array.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -309,7 +326,6 @@
                     matches.push({
                         id: `m_${round}_${i}`,
                         round: round,
-                        // ESTA LÍNEA GARANTIZA LA ALTERNANCIA DE COLORES:
                         player1Id: round % 2 === 0 ? p2.id : p1.id,
                         player2Id: round % 2 === 0 ? p1.id : p2.id,
                         result: ""
@@ -326,40 +342,131 @@
         if(c && pendingAction === 'start') {
             let names = document.getElementById('playersInput').value.split('\n').filter(x => x.trim());
             if(names.length < 2) { showToast("Mínimo 2 jugadores"); return; }
-            
-            // 1. Aleatoriedad total:
             names = shuffleArray(names);
-            
-            // 2. Creación de jugadores con IDs fijos:
             const players = names.map((name, index) => ({ id: index + 1, name: name }));
-            
-            // 3. Generación con alternancia de colores automática:
             const matches = generateRoundRobin(players);
-            
             sendGoogleAction('create', { players: players, matches: matches });
         }
         if(c && pendingAction === 'reset') sendGoogleAction('reset');
     }
 
+    // PDF DE CLASIFICACIÓN CORREGIDO
     function downloadPDF() {
-        const { jsPDF } = window.jspdf; const doc = new jsPDF();
-        doc.setFontSize(18); doc.text("Clasificación Final - Ajedrez Siurot", 15, 20);
-        doc.setFontSize(10); doc.text("Fecha: " + new Date().toLocaleDateString(), 15, 28);
-        let y = 40;
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        // Cabecera
+        doc.setFontSize(18);
+        doc.text("Clasificación Final - Ajedrez Siurot", 15, 20);
+        doc.setFontSize(10);
+        doc.text("Fecha: " + new Date().toLocaleDateString(), 15, 28);
+        
+        let y = 45;
+        
+        // Configuración de Columnas (Coordenadas X fijas)
+        const colPos = 15;
+        const colName = 30;
+        const colPts = 120;
+        const colBH = 150;
+
         doc.setFontSize(12);
-        doc.text("#   Jugador                     Pts     BH", 15, y);
-        doc.line(15, y+2, 195, y+2);
+        doc.setFont(undefined, 'bold');
+        doc.text("Pos", colPos, y);
+        doc.text("Jugador", colName, y);
+        doc.text("Pts", colPts, y);
+        doc.text("BH", colBH, y);
+        
+        doc.line(15, y + 2, 195, y + 2);
         y += 10;
+
+        doc.setFont(undefined, 'normal');
         calculateRanking().forEach((p, i) => { 
-            const pos = (i+1).toString().padEnd(4);
-            const name = p.name.padEnd(25);
-            const pts = p.points.toString().padEnd(8);
-            const bh = p.buchholz.toFixed(1);
-            doc.text(`${pos} ${name} ${pts} ${bh}`, 15, y); 
-            y+=8; 
-            if(y > 280) { doc.addPage(); y = 20; }
+            doc.text((i + 1).toString(), colPos, y);
+            doc.text(p.name, colName, y);
+            doc.text(p.points.toString(), colPts, y);
+            doc.text(p.buchholz.toFixed(1), colBH, y);
+            y += 8;
+            if(y > 275) { doc.addPage(); y = 20; }
         });
+
+        // Añadir resultados de rondas
+        y += 10;
+        if(y > 250) { doc.addPage(); y = 20; }
+        
+        doc.setFont(undefined, 'bold');
+        doc.text("Resultados de las Rondas Jugadas", 15, y);
+        y += 10;
+        doc.setFont(undefined, 'normal');
+        doc.setFontSize(10);
+
+        const rounds = [...new Set(appData.matches.map(m => m.round))].sort((a,b) => a-b);
+        rounds.forEach(r => {
+            const roundMatches = appData.matches.filter(m => m.round === r && m.result);
+            if(roundMatches.length > 0) {
+                doc.setFont(undefined, 'bold');
+                doc.text(`RONDA ${r}`, 15, y);
+                y += 6;
+                doc.setFont(undefined, 'normal');
+                roundMatches.forEach(m => {
+                    const p1 = appData.players.find(p => p.id === m.player1Id).name;
+                    const p2 = appData.players.find(p => p.id === m.player2Id).name;
+                    doc.text(`${p1}  [${m.result}]  ${p2}`, 20, y);
+                    y += 5;
+                    if(y > 280) { doc.addPage(); y = 20; }
+                });
+                y += 4;
+            }
+        });
+
         doc.save("Clasificacion_Ajedrez_Siurot.pdf");
+    }
+
+    // NUEVO: PDF DE EMPAREJAMIENTOS
+    function downloadMatchesPDF() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        doc.setFontSize(18);
+        doc.text("Emparejamientos - Ajedrez Siurot", 15, 20);
+        doc.setFontSize(10);
+        doc.text("Nota: El primer jugador de cada mesa lleva BLANCAS y es responsable del tablero.", 15, 28);
+        
+        let y = 40;
+        const rounds = [...new Set(appData.matches.map(m => m.round))].sort((a,b) => a-b);
+        
+        rounds.forEach(r => {
+            if(y > 240) { doc.addPage(); y = 20; }
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            doc.setFillColor(230, 230, 230);
+            doc.rect(15, y, 180, 8, 'F');
+            doc.text(`RONDA ${r}`, 20, y + 6);
+            y += 15;
+            
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'normal');
+            
+            let mesa = 1;
+            appData.matches.filter(m => m.round === r).forEach(m => {
+                const p1 = appData.players.find(p => p.id === m.player1Id).name;
+                const p2 = appData.players.find(p => p.id === m.player2Id).name;
+                
+                doc.text(`Mesa ${mesa}:`, 15, y);
+                doc.setFont(undefined, 'bold');
+                doc.text(p1, 35, y);
+                doc.setFont(undefined, 'normal');
+                doc.text(" (B)  vs  ", 85, y);
+                doc.text(p2, 110, y);
+                doc.text(" (N)", 175, y);
+                
+                y += 8;
+                mesa++;
+                if(y > 280) { doc.addPage(); y = 20; }
+            });
+            y += 10;
+        });
+        
+        doc.save("Emparejamientos_Torneo_Siurot.pdf");
     }
 </script>
 </body>
