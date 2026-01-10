@@ -8,7 +8,9 @@
     <meta http-equiv="Expires" content="0">
     
     <title>Ajedrez Siurot</title>
-   <link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="Ajedrez.ico" type="image/x-icon">
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         :root {
@@ -137,6 +139,15 @@
 <div id="toast"></div>
 
 <script>
+    // Registro del Service Worker
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('Service Worker registrado', reg))
+                .catch(err => console.error('Error al registrar SW', err));
+        });
+    }
+
     // --- LÓGICA DE AUTO-ACTUALIZACIÓN POR HUELLA DIGITAL (HASH) ---
     function getPageHash() {
         const content = document.documentElement.innerHTML.replace(/<script.*?>.*?<\/script>/gs, "");
@@ -156,7 +167,6 @@
             console.log("Detectado cambio en el código. Forzando limpieza...");
             localStorage.clear();
             localStorage.setItem('siurot_page_hash', currentHash);
-            // Redirección con timestamp para matar la caché de raíz
             const cleanUrl = window.location.origin + window.location.pathname + "?u=" + Date.now();
             window.location.replace(cleanUrl);
         } else {
