@@ -1,9 +1,9 @@
-const CACHE_NAME = 'ajedrez-siurot-v1';
+const CACHE_NAME = 'ajedrez-siurot-v2'; // <--- CAMBIA ESTO A V2
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-  './icono-192.png', // Recomendable cachear los iconos
+  './manifest.json', // Añade esto para asegurar que se guarde la info de la app
+  './icono-192.png',
   './icono-512.png'
 ];
 
@@ -52,4 +52,5 @@ self.addEventListener('fetch', event => {
       });
     })
   );
+
 });
